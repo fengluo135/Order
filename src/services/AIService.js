@@ -106,10 +106,22 @@ const AIService = {
       }
 
       llmHotels = await LLMService.generateHotelRecommendations(travelData, destination, userRequirements);
+      message.success('豆包AI攻略生成成功！');
     } catch (e) {
       console.error('豆包API调用失败:', e);
       llmError = e.message;
-      message.warning('豆包AI生成失败，将使用基础数据');
+      message.warning('豆包AI生成失败，将使用模拟数据生成攻略');
+      
+      llmGuide = LLMService.getMockTravelGuide(travelData);
+      llmGuide = { schedules: [], rawResponse: llmGuide };
+      
+      if (travelMode === 'driving') {
+        const mockRoute = LLMService.getMockDrivingRoute(travelData);
+        llmRoute = { routes: [], restStops: [], rawResponse: mockRoute };
+      }
+      
+      const mockHotels = LLMService.getMockHotelRecommendations(travelData);
+      llmHotels = { hotels: [], rawResponse: mockHotels };
     }
 
     // 5. 生成每日行程

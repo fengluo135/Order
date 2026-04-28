@@ -8,7 +8,8 @@ class LLMService {
   constructor() {
     this.apiKey = 'ark-41e64cce-02a5-432f-ba81-3ab08f7c3932-b64a7';
     this.baseUrl = 'https://ark.cn-beijing.volces.com/api/v3';
-    this.model = 'doubao-pro-32k';
+    this.model = 'doubao-pro';
+    this.enabled = true;
   }
 
   /**
@@ -61,19 +62,22 @@ class LLMService {
    */
   async callDoubao(prompt) {
     const url = `${this.baseUrl}/chat/completions`;
+    console.log('豆包API调用:', url);
+    console.log('API Key:', this.apiKey ? '已配置' : '未配置');
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content: `你是一个专业的旅游规划师，擅长生成详细、实用的旅游攻略。请根据用户的需求，结合地图数据，生成包含以下内容的详细攻略：
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: 'system',
+              content: `你是一个专业的旅游规划师，擅长生成详细、实用的旅游攻略。请根据用户的需求，结合地图数据，生成包含以下内容的详细攻略：
 
 1. 每日详细行程安排（精确到小时）
 2. 每个景点的具体地址、开放时间、门票信息、游玩建议
@@ -84,29 +88,39 @@ class LLMService {
 7. 根据用户特殊需求提供的个性化建议
 
 请用中文回复，格式清晰，使用表情符号增加可读性。`
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 8000,
-      }),
-    });
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 8000,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`豆包API调用失败: ${response.status} - ${errorText}`);
+      console.log('豆包API响应状态:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('豆包API错误响应:', errorText);
+        throw new Error(`豆包API调用失败: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('豆包API响应数据:', data);
+
+      if (data.error) {
+        throw new Error(data.error.message || '豆包API返回错误');
+      }
+
+      const result = data.choices?.[0]?.message?.content || '';
+      console.log('豆包API返回内容长度:', result.length);
+      return result;
+    } catch (error) {
+      console.error('豆包API调用异常:', error);
+      throw error;
     }
-
-    const data = await response.json();
-
-    if (data.error) {
-      throw new Error(data.error.message || '豆包API返回错误');
-    }
-
-    return data.choices?.[0]?.message?.content || '';
   }
 
   /**
@@ -293,6 +307,176 @@ class LLMService {
       hotels: [],
       rawResponse: response,
     };
+  }
+
+  /**
+   * 获取模拟AI回复
+   */
+  getMockTravelGuide(travelData) {
+    const { destination, tripDays, travelMode, peopleCount } = travelData;
+    const modeLabel = travelMode === 'driving' ? '自驾' : travelMode === 'public' ? '公共交通' : '飞机';
+    
+    return `# ${destination}${tripDays}天旅游攻略
+
+## 📅 行程概览
+
+您将开启一段精彩的${destination}之旅，共${tripDays}天${tripDays - 1}晚，${modeLabel}出行，${peopleCount}人同行。
+
+## 🗓️ 每日行程
+
+### 第1天：抵达与城市探索
+- **上午**：抵达${destination}，入住酒店稍作休息
+- **中午**：品尝当地特色美食
+- **下午**：游览市中心著名景点
+- **晚上**：逛夜市，体验当地夜生活
+
+### 第2天：深度游览
+- **上午**：前往主要景区游玩
+- **中午**：景区内用餐
+- **下午**：继续游览，拍照留念
+- **晚上**：观看当地表演或演出
+
+${tripDays > 2 ? `### 第3天：文化体验
+- **上午**：参观博物馆或历史古迹
+- **中午**：特色餐厅用餐
+- **下午**：自由活动或购物
+- **晚上**：准备返程
+
+${tripDays > 3 ? `### 第4-${tripDays}天：自由探索
+- 可根据兴趣选择周边景点游览
+- 或安排休闲购物时间` : ''}` : ''}
+
+## 🍽️ 美食推荐
+- **必吃美食**：${destination}特色小吃、当地名菜
+- **推荐餐厅**：当地老字号、特色餐厅
+- **美食街**：${destination}美食街区
+
+## 🏨 住宿建议
+- **推荐区域**：市中心或景区附近
+- **预算参考**：根据您的预算选择合适酒店
+- **预订建议**：提前预订，旺季更需提早
+
+## 🚗 交通指南
+- **市内交通**：地铁、公交、出租车
+- **景区交通**：步行或景区观光车
+- ${travelMode === 'driving' ? '**自驾提示**：提前规划停车地点，注意限行政策' : ''}
+
+## ⚠️ 注意事项
+- 提前查询天气情况，备好合适衣物
+- 景区门票建议提前网上预订
+- 保管好个人财物，注意安全
+- 尊重当地风俗习惯
+
+## 💡 旅行小贴士
+- 建议下载${destination}本地地图APP
+- 准备移动电源，保持手机畅通
+- 可购买当地交通卡方便出行
+
+祝您旅途愉快！🎉`;
+  }
+
+  getMockDrivingRoute(travelData) {
+    const { departure, destination } = travelData;
+    return `# ${departure} → ${destination} 自驾路线规划
+
+## 🗺️ 路线概览
+- **总里程**：约800公里
+- **预计时间**：约10小时
+- **主要高速**：G1京哈高速、G2京沪高速
+
+## 📍 详细路线
+
+### 第一段：${departure}市区出发
+- 从起点出发，进入${departure}绕城高速
+- 途经：${departure}收费站
+- 里程：约50公里，预计1小时
+
+### 第二段：高速公路行驶
+- 转入G1京哈高速，一路向南
+- 推荐服务区：XX服务区（餐饮、加油、休息）
+- 里程：约400公里，预计4.5小时
+- ⚠️ 注意：此段路程较长，建议每2小时休息一次
+
+### 第三段：途经城市
+- 经过XX市，可选择在此午餐
+- 继续沿高速行驶
+- 里程：约200公里，预计2.5小时
+
+### 第四段：抵达${destination}
+- 转入${destination}绕城高速
+- 下高速后进入市区
+- 里程：约150公里，预计2小时
+- 🅿️ 推荐停车场：${destination}市中心停车场
+
+## ⛽ 服务区推荐
+1. **XX服务区** - 设施齐全，餐饮选择多
+2. **YY服务区** - 环境较好，适合休息
+3. **ZZ服务区** - 靠近终点，可最后补给
+
+## ⚠️ 安全提示
+- 遵守限速规定，注意行车安全
+- 长途驾驶建议轮流开车
+- 提前检查车辆状况
+- 备好应急物品
+
+## 📱 导航建议
+- 使用高德地图或百度地图导航
+- 提前下载离线地图以防信号不佳
+- 设置途经点提醒服务区位置
+
+祝您一路平安！🚗💨`;
+  }
+
+  getMockHotelRecommendations(travelData) {
+    const { destination, budget } = travelData;
+    const budgetLabel = budget === 'low' ? '经济型' : budget === 'medium' ? '舒适型' : '豪华型';
+    
+    return `# ${destination}酒店推荐
+
+根据您的${budgetLabel}预算，为您推荐以下酒店：
+
+## 🏨 推荐酒店
+
+### 1. ${destination}大酒店
+- **星级**：★★★★★
+- **位置**：市中心繁华地段，交通便利
+- **价格**：¥800-1200/晚
+- **特色**：设施豪华，服务周到，配有健身房和游泳池
+- **适合**：追求高品质住宿体验的游客
+
+### 2. ${destination}商务酒店
+- **星级**：★★★★
+- **位置**：商业区附近，出行方便
+- **价格**：¥400-600/晚
+- **特色**：性价比高，商务设施齐全
+- **适合**：商务出行或中等预算游客
+
+### 3. ${destination}精品民宿
+- **类型**：特色民宿
+- **位置**：老城区，充满当地风情
+- **价格**：¥300-500/晚
+- **特色**：温馨舒适，体验当地生活
+- **适合**：喜欢特色住宿的游客
+
+### 4. ${destination}快捷酒店
+- **类型**：连锁快捷酒店
+- **位置**：交通枢纽附近
+- **价格**：¥200-300/晚
+- **特色**：干净整洁，经济实惠
+- **适合**：经济型预算游客
+
+## 💡 预订建议
+- 旺季建议提前1-2周预订
+- 关注各大预订平台优惠活动
+- 查看住客评价选择合适酒店
+- 确认取消政策和退改规则
+
+## 📍 位置选择
+- **市中心**：交通便利，购物方便
+- **景区附近**：游玩便利，环境优美
+- **交通枢纽**：适合赶车赶飞机的游客
+
+祝您入住愉快！🏠`;
   }
 
   /**
