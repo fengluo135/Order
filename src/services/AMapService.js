@@ -13,8 +13,11 @@ const AMapService = {
   async geocode(address) {
     try {
       const url = `${this.getBaseUrl()}/v3/geocode/geo?address=${encodeURIComponent(address)}&key=${AMapAPI_KEY}`;
+      console.log('地理编码请求:', url);
       const response = await fetch(url);
+      console.log('地理编码响应状态:', response.status);
       const data = await response.json();
+      console.log('地理编码响应数据:', data);
 
       if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
         const location = data.geocodes[0].location.split(',');
@@ -26,7 +29,7 @@ const AMapService = {
           district: data.geocodes[0].district,
         };
       }
-      console.warn('地理编码失败:', data.info);
+      console.warn('地理编码失败:', data.info || data);
       return null;
     } catch (error) {
       console.error('地理编码错误:', error);

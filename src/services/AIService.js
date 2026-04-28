@@ -1,21 +1,22 @@
 import AMapService from './AMapService';
 import UserPreferenceAnalyzer from './UserPreferenceAnalyzer';
 import CommunityExperience from './CommunityExperience';
+import LLMService from './LLMService';
 
 const AIService = {
   /**
    * 生成完整的智能旅游攻略
-   * 结合用户偏好、实时数据、社区经验
+   * 结合用户偏好、实时数据、社区经验和豆包AI
    * @param {object} travelData - 旅游数据
    * @returns {Promise<object>}
    */
   async generateItinerary(travelData) {
-    const { departure, destination, travelMode, departureDate, peopleCount, tripDays, tripTheme, budget, specialNeeds, interests } = travelData;
+    const { departure, destination, travelMode, departureDate, peopleCount, tripDays, tripTheme, budget, specialNeeds, interests, userRequirements, userLocation } = travelData;
 
     // 1. 分析用户偏好
     const userProfile = UserPreferenceAnalyzer.analyzePreferences(travelData);
 
-    // 2. 获取社区经验（常见问题和前人经验）
+    // 2. 获取社区经验
     const commonIssues = CommunityExperience.getCommonIssues(travelData);
 
     // 3. 调用高德API获取实时数据
@@ -26,9 +27,9 @@ const AIService = {
     let attractions = [];
     let restaurants = [];
     let hotels = [];
+    let amapError = null;
 
     try {
-      // 地理编码
       const geoResults = await Promise.all([
         AMapService.geocode(departure),
         AMapService.geocode(destination),
@@ -37,15 +38,21 @@ const AIService = {
       destinationGeo = geoResults[1];
     } catch (e) {
       console.warn('地理编码失败:', e);
+      amapError = '地理编码失败';
     }
 
-    // 如果地理编码成功，继续获取其他数据
+    if (!departureGeo) {
+      departureGeo = this.getMockGeo(departure);
+    }
+    if (!destinationGeo) {
+      destinationGeo = this.getMockGeo(destination);
+    }
+
     if (departureGeo && destinationGeo) {
       try {
         const origin = `${departureGeo.lng},${departureGeo.lat}`;
         const dest = `${destinationGeo.lng},${destinationGeo.lat}`;
 
-        // 路线规划
         if (travelMode === 'driving') {
           routeInfo = await AMapService.drivingRoute(origin, dest);
         } else if (travelMode === 'public') {
@@ -53,17 +60,17 @@ const AIService = {
         }
       } catch (e) {
         console.warn('路线规划失败:', e);
+        routeInfo = this.getMockRoute(destination);
       }
 
       try {
-        // 天气查询
         weather = await AMapService.weather(destinationGeo.city || destination);
       } catch (e) {
         console.warn('天气查询失败:', e);
+        weather = this.getMockWeather();
       }
 
       try {
-        // POI搜索
         const poiType = this.getPoiType(tripTheme);
         const [attr, rest, hotel] = await Promise.all([
           AMapService.searchNearby(destinationGeo.lat, destinationGeo.lng, poiType, 10000),
@@ -75,18 +82,37 @@ const AIService = {
         hotels = hotel;
       } catch (e) {
         console.warn('POI搜索失败:', e);
+        const mockData = this.getMockPOI(destination, tripTheme);
+        attractions = mockData.attractions;
+        restaurants = mockData.restaurants;
+        hotels = mockData.hotels;
       }
     }
 
-    // 4. 如果API调用失败或数据不足，使用模拟数据
-    const hasRealData = departureGeo && destinationGeo && attractions.length > 0;
+    // 4. 调用豆包API生成详细攻略
+    let llmGuide = null;
+    let llmRoute = null;
+    let llmHotels = null;
+    let llmError = null;
 
-    if (!hasRealData) {
-      console.log('使用模拟数据生成攻略');
-      return this.generateMockItinerary(travelData, userProfile, commonIssues);
+    const mapData = { route: routeInfo, weather, attractions, restaurants, hotels };
+
+    try {
+      message.info('正在调用豆包AI生成详细攻略...');
+      llmGuide = await LLMService.generateTravelGuide(travelData, mapData, userRequirements);
+
+      if (travelMode === 'driving') {
+        llmRoute = await LLMService.generateDrivingRoute(travelData, routeInfo, userRequirements);
+      }
+
+      llmHotels = await LLMService.generateHotelRecommendations(travelData, destination, userRequirements);
+    } catch (e) {
+      console.error('豆包API调用失败:', e);
+      llmError = e.message;
+      message.warning('豆包AI生成失败，将使用基础数据');
     }
 
-    // 5. 生成智能每日行程
+    // 5. 生成每日行程
     const dailySchedules = this.generateDailySchedule(
       destination,
       destinationGeo,
@@ -95,7 +121,8 @@ const AIService = {
       attractions,
       restaurants,
       weather,
-      userProfile
+      userProfile,
+      llmGuide
     );
 
     // 6. 生成综合建议
@@ -103,7 +130,8 @@ const AIService = {
       userProfile,
       weather,
       routeInfo,
-      commonIssues
+      commonIssues,
+      llmError
     );
 
     return {
@@ -114,135 +142,35 @@ const AIService = {
       destination: {
         name: destination,
         location: destinationGeo,
-        city: destinationGeo.city,
+        city: destinationGeo?.city,
       },
       route: routeInfo ? {
         distance: routeInfo.distance,
         duration: routeInfo.duration,
         steps: routeInfo.steps || routeInfo.segments,
-      } : this.getMockRouteInfo(travelMode),
+        llmRoute,
+      } : null,
       weather: weather || this.getMockWeather(),
       dailySchedules,
       recommendations: {
         attractions: attractions.slice(0, 10),
         restaurants: restaurants.slice(0, 5),
         hotels: hotels.slice(0, 5),
+        llmHotels,
       },
       userProfile,
       commonIssues,
       comprehensiveAdvice,
+      llmGuide,
+      llmError,
+      llmEnabled: llmGuide !== null,
+      userRequirements,
+      userLocation,
     };
   },
 
   /**
-   * 生成模拟攻略（当API不可用时）
-   */
-  generateMockItinerary(travelData, userProfile, commonIssues) {
-    const { departure, destination, travelMode, tripDays, tripTheme } = travelData;
-
-    const dailySchedules = this.generateDailySchedule(
-      destination,
-      { lng: 121.47, lat: 31.23 },
-      tripDays,
-      tripTheme,
-      [],
-      [],
-      null,
-      userProfile
-    );
-
-    const comprehensiveAdvice = this.generateComprehensiveAdvice(
-      userProfile,
-      null,
-      null,
-      commonIssues
-    );
-
-    return {
-      departure: {
-        name: departure,
-        location: { lng: 116.40, lat: 39.90, province: '北京市', city: '北京市' },
-      },
-      destination: {
-        name: destination,
-        location: { lng: 121.47, lat: 31.23, province: '上海市', city: '上海市' },
-        city: '上海市',
-      },
-      route: this.getMockRouteInfo(travelMode),
-      weather: this.getMockWeather(),
-      dailySchedules,
-      recommendations: {
-        attractions: this.getMockAttractions(destination),
-        restaurants: this.getMockRestaurants(destination),
-        hotels: this.getMockHotels(destination),
-      },
-      userProfile,
-      commonIssues,
-      comprehensiveAdvice,
-    };
-  },
-
-  /**
-   * 获取模拟景点数据
-   */
-  getMockAttractions(destination) {
-    return [
-      { name: '东方明珠', address: '上海市浦东新区', type: '旅游景点', distance: '0' },
-      { name: '外滩', address: '上海市黄浦区', type: '旅游景点', distance: '1000' },
-      { name: '豫园', address: '上海市黄浦区', type: '旅游景点', distance: '2000' },
-      { name: '南京路步行街', address: '上海市黄浦区', type: '购物场所', distance: '1500' },
-      { name: '上海博物馆', address: '上海市黄浦区', type: '文化设施', distance: '2500' },
-    ];
-  },
-
-  /**
-   * 获取模拟餐厅数据
-   */
-  getMockRestaurants(destination) {
-    return [
-      { name: '南翔小笼包', address: '上海市嘉定区', type: '餐饮' },
-      { name: '上海老饭店', address: '上海市黄浦区', type: '餐饮' },
-      { name: '红房子西菜馆', address: '上海市卢湾区', type: '餐饮' },
-    ];
-  },
-
-  /**
-   * 获取模拟酒店数据
-   */
-  getMockHotels(destination) {
-    return [
-      { name: '上海外滩酒店', address: '上海市黄浦区', type: '住宿' },
-      { name: '上海金茂君悦大酒店', address: '上海市浦东新区', type: '住宿' },
-    ];
-  },
-
-  /**
-   * 获取模拟路线信息
-   */
-  getMockRouteInfo(travelMode) {
-    const routes = {
-      driving: { distance: '1200000', duration: '46800' },
-      public: { distance: '1200000', duration: '14400' },
-      airplane: { distance: '1200000', duration: '7200' },
-    };
-    return routes[travelMode] || routes.driving;
-  },
-
-  /**
-   * 获取模拟天气
-   */
-  getMockWeather() {
-    return {
-      weather: '多云',
-      temperature: '22',
-      wind: '东南风 3级',
-      humidity: '65',
-      reportTime: new Date().toLocaleString(),
-    };
-  },
-
-  /**
-   * 根据旅游主题获取POI类型
+   * 获取POI类型
    */
   getPoiType(tripTheme) {
     const typeMap = {
@@ -259,7 +187,7 @@ const AIService = {
   /**
    * 生成每日行程
    */
-  generateDailySchedule(destination, destinationGeo, tripDays, tripTheme, attractions, restaurants, weather, userProfile) {
+  generateDailySchedule(destination, destinationGeo, tripDays, tripTheme, attractions, restaurants, weather, userProfile, llmGuide) {
     const schedules = [];
     const days = parseInt(tripDays) || 3;
     const destinationName = destination || '当地';
@@ -273,13 +201,15 @@ const AIService = {
         ? [restaurants[(day - 1) % restaurants.length]]
         : [];
 
-      // 根据用户偏好调整行程
+      const llmDaySchedule = llmGuide?.schedules?.find(s => s.day === day);
+
       const adjustedSchedule = this.adjustScheduleForUser(
         day,
         dayAttractions,
         dayRestaurants,
         destinationName,
-        userProfile
+        userProfile,
+        llmDaySchedule
       );
 
       schedules.push({
@@ -293,6 +223,7 @@ const AIService = {
         } : { temperature: '18-25°C', condition: '晴', wind: '微风' },
         accommodation: `${destinationName}第${day}天推荐住宿`,
         dailyTip: this.getDailyTip(day, userProfile, weather),
+        llmContent: llmDaySchedule?.content || '',
       });
     }
 
@@ -302,7 +233,13 @@ const AIService = {
   /**
    * 根据用户偏好调整行程
    */
-  adjustScheduleForUser(day, dayAttractions, dayRestaurants, destinationName, userProfile) {
+  adjustScheduleForUser(day, dayAttractions, dayRestaurants, destinationName, userProfile, llmDaySchedule) {
+    if (llmDaySchedule) {
+      return [
+        { time: '全天', title: 'AI智能规划', description: llmDaySchedule.content, type: 'ai' },
+      ];
+    }
+
     const baseSchedule = [
       { time: '08:00', title: '早餐', description: '酒店自助早餐', type: 'meal' },
       { time: '09:00', title: '出发游览', description: dayAttractions[0]?.name || `${destinationName}著名景点${day}`, type: 'attraction', location: dayAttractions[0]?.location },
@@ -310,12 +247,10 @@ const AIService = {
       { time: '14:00', title: '下午活动', description: dayAttractions[1]?.name || `${destinationName}其他景点`, type: 'attraction', location: dayAttractions[1]?.location },
       { time: '17:00', title: '自由活动', description: '购物或休息', type: 'free' },
       { time: '19:00', title: '晚餐', description: dayRestaurants[0]?.name || '品尝当地美食', type: 'meal' },
-      { time: '20:00', title: '晚间活动', description: this.getEveningActivity(userProfile.travelPurpose.primary), type: 'entertainment' },
+      { time: '20:00', title: '晚间活动', description: this.getEveningActivity(userProfile.travelPurpose?.primary), type: 'entertainment' },
     ];
 
-    // 根据用户类型调整行程
-    if (userProfile.userType.type === 'family_with_elderly') {
-      // 如果有老人，增加休息时间
+    if (userProfile.userType?.type === 'family_with_elderly') {
       return baseSchedule.map(item => {
         if (item.type === 'attraction') {
           return { ...item, duration: '较长' };
@@ -333,14 +268,12 @@ const AIService = {
   getDailyTip(day, userProfile, weather) {
     const tips = [];
 
-    // 根据天数提供建议
     if (day === 1) {
       tips.push('第一天建议早点休息，适应环境');
     } else if (day === parseInt(userProfile.timePreference?.pace === '紧凑' ? 2 : 3)) {
       tips.push('行程过半，注意保存体力');
     }
 
-    // 根据天气提供建议
     if (weather?.weather?.includes('雨')) {
       tips.push('今日有雨，记得带伞');
     }
@@ -369,22 +302,20 @@ const AIService = {
   /**
    * 生成综合建议
    */
-  generateComprehensiveAdvice(userProfile, weather, routeInfo, commonIssues) {
+  generateComprehensiveAdvice(userProfile, weather, routeInfo, commonIssues, llmError) {
     const advice = [];
 
-    // 1. 根据用户类型提供建议
     advice.push({
       category: '用户画像分析',
       icon: '👤',
       items: [
-        `您的旅行类型：${userProfile.userType.label}`,
-        `旅行目的：${userProfile.travelPurpose.primary}`,
+        `您的旅行类型：${userProfile.userType?.label || '常规旅游'}`,
+        `旅行目的：${userProfile.travelPurpose?.primary || '旅游'}`,
         `行程节奏：${userProfile.timePreference?.pace || '适中'}`,
-        ...userProfile.userType.description.split('。').filter(Boolean).map(s => s + '。'),
+        ...(userProfile.userType?.description?.split('。').filter(Boolean) || []).map(s => s + '。'),
       ],
     });
 
-    // 2. 根据天气提供建议
     if (weather) {
       advice.push({
         category: '天气提醒',
@@ -399,9 +330,8 @@ const AIService = {
       });
     }
 
-    // 3. 根据路线提供建议
     if (routeInfo) {
-      const hours = Math.floor(routeInfo.duration / 3600);
+      const hours = Math.floor(parseInt(routeInfo.duration) / 3600);
       advice.push({
         category: '路程提醒',
         icon: '🚗',
@@ -413,7 +343,6 @@ const AIService = {
       });
     }
 
-    // 4. 高优先级问题提醒
     const highPriorityIssues = commonIssues.filter(i => i.severity === 'warning').slice(0, 3);
     if (highPriorityIssues.length > 0) {
       advice.push({
@@ -423,12 +352,32 @@ const AIService = {
       });
     }
 
-    // 5. 个性化建议
     if (userProfile.personalizedTips?.length > 0) {
       advice.push({
         category: '个性化建议',
         icon: '💡',
         items: userProfile.personalizedTips.slice(0, 5),
+      });
+    }
+
+    if (llmError) {
+      advice.push({
+        category: '🤖 AI状态',
+        icon: '⚠️',
+        items: [
+          `豆包AI生成失败：${llmError}`,
+          '将使用基础数据生成攻略',
+          '可稍后重试获取更详细的AI攻略',
+        ],
+      });
+    } else {
+      advice.push({
+        category: '🤖 AI状态',
+        icon: '✅',
+        items: [
+          '豆包AI已生成详细攻略',
+          '可在下方查看完整的每日行程',
+        ],
       });
     }
 
@@ -443,6 +392,136 @@ const AIService = {
     result.setDate(result.getDate() + days);
     return result;
   },
+
+  /**
+   * 获取模拟地理编码数据
+   */
+  getMockGeo(address) {
+    const mockLocations = {
+      '北京': { lng: 116.4074, lat: 39.9042, city: '北京市', province: '北京市', district: '' },
+      '上海': { lng: 121.4737, lat: 31.2304, city: '上海市', province: '上海市', district: '' },
+      '广州': { lng: 113.2644, lat: 23.1291, city: '广州市', province: '广东省', district: '' },
+      '深圳': { lng: 114.0596, lat: 22.5431, city: '深圳市', province: '广东省', district: '' },
+      '杭州': { lng: 120.1919, lat: 30.2741, city: '杭州市', province: '浙江省', district: '' },
+      '成都': { lng: 104.0668, lat: 30.5728, city: '成都市', province: '四川省', district: '' },
+      '重庆': { lng: 106.5516, lat: 29.5630, city: '重庆市', province: '重庆市', district: '' },
+      '武汉': { lng: 114.2871, lat: 30.5928, city: '武汉市', province: '湖北省', district: '' },
+    };
+    const city = address.replace(/市|省|区|县/g, '');
+    return mockLocations[city] || mockLocations['北京'];
+  },
+
+  /**
+   * 获取模拟路线数据
+   */
+  getMockRoute(destination) {
+    const distances = {
+      '北京': { distance: '10000', duration: '3600' },
+      '上海': { distance: '120000', duration: '43200' },
+      '广州': { distance: '2100000', duration: '72000' },
+      '深圳': { distance: '2200000', duration: '75600' },
+      '杭州': { distance: '1300000', duration: '46800' },
+      '成都': { distance: '1800000', duration: '64800' },
+      '重庆': { distance: '1600000', duration: '57600' },
+      '武汉': { distance: '1100000', duration: '39600' },
+    };
+    const city = destination.replace(/市|省|区|县/g, '');
+    const data = distances[city] || { distance: '500000', duration: '18000' };
+    
+    return {
+      distance: data.distance,
+      duration: data.duration,
+      steps: [
+        { instruction: '从起点出发，进入主路', road: '主干道', distance: '5000', time: '600' },
+        { instruction: '直行约5公里后进入高速', road: '高速公路', distance: '50000', time: '3600' },
+        { instruction: '沿高速直行', road: '高速公路', distance: '300000', time: '10800' },
+        { instruction: '下高速，进入市区', road: '市区道路', distance: '10000', time: '1800' },
+        { instruction: '到达目的地', road: '目的地周边', distance: '500', time: '60' },
+      ],
+    };
+  },
+
+  /**
+   * 获取模拟天气数据
+   */
+  getMockWeather() {
+    const weathers = [
+      { weather: '晴', temperature: '25', wind: '东北风 2级', humidity: '60' },
+      { weather: '多云', temperature: '23', wind: '东风 3级', humidity: '65' },
+      { weather: '阴', temperature: '20', wind: '北风 2级', humidity: '75' },
+      { weather: '小雨', temperature: '18', wind: '南风 3级', humidity: '85' },
+    ];
+    return weathers[Math.floor(Math.random() * weathers.length)];
+  },
+
+  /**
+   * 获取模拟POI数据
+   */
+  getMockPOI(destination, theme) {
+    const themeAttractions = {
+      nature: [
+        { name: `${destination}国家森林公园`, address: `${destination}市郊区`, location: '', type: '自然景观', distance: '2000' },
+        { name: `${destination}湖景区`, address: `${destination}市西南郊`, location: '', type: '自然景观', distance: '5000' },
+        { name: `${destination}山风景区`, address: `${destination}市西北方向`, location: '', type: '自然景观', distance: '8000' },
+      ],
+      culture: [
+        { name: `${destination}博物馆`, address: `${destination}市中心`, location: '', type: '文化设施', distance: '1000' },
+        { name: `${destination}古城遗址`, address: `${destination}市老城区`, location: '', type: '历史古迹', distance: '2000' },
+        { name: `${destination}名人故居`, address: `${destination}市文化街区`, location: '', type: '历史古迹', distance: '1500' },
+      ],
+      food: [
+        { name: `${destination}美食街`, address: `${destination}市商业中心`, location: '', type: '餐饮', distance: '800' },
+        { name: `${destination}老字号餐厅`, address: `${destination}市老城区`, location: '', type: '餐饮', distance: '1200' },
+        { name: `${destination}夜市`, address: `${destination}市步行街`, location: '', type: '餐饮', distance: '500' },
+      ],
+      shopping: [
+        { name: `${destination}购物中心`, address: `${destination}市商业中心`, location: '', type: '购物', distance: '600' },
+        { name: `${destination}步行街`, address: `${destination}市中心`, location: '', type: '购物', distance: '800' },
+        { name: `${destination}奥特莱斯`, address: `${destination}市郊区`, location: '', type: '购物', distance: '15000' },
+      ],
+      adventure: [
+        { name: `${destination}徒步路线`, address: `${destination}市郊外`, location: '', type: '户外', distance: '10000' },
+        { name: `${destination}攀岩基地`, address: `${destination}市周边`, location: '', type: '户外', distance: '8000' },
+        { name: `${destination}漂流景区`, address: `${destination}市郊区`, location: '', type: '户外', distance: '20000' },
+      ],
+      relax: [
+        { name: `${destination}温泉度假村`, address: `${destination}市郊区`, location: '', type: '休闲', distance: '15000' },
+        { name: `${destination}海滨浴场`, address: `${destination}市海边`, location: '', type: '休闲', distance: '10000' },
+        { name: `${destination}SPA会所`, address: `${destination}市商业区`, location: '', type: '休闲', distance: '2000' },
+      ],
+    };
+
+    const defaultAttractions = themeAttractions[theme] || themeAttractions.nature;
+    
+    return {
+      attractions: defaultAttractions,
+      restaurants: [
+        { name: '特色餐厅A', address: `${destination}市美食街`, location: '', type: '餐饮', distance: '500' },
+        { name: '特色餐厅B', address: `${destination}市老城区`, location: '', type: '餐饮', distance: '1000' },
+        { name: '特色餐厅C', address: `${destination}市景区附近`, location: '', type: '餐饮', distance: '800' },
+        { name: '特色餐厅D', address: `${destination}市商业街`, location: '', type: '餐饮', distance: '600' },
+        { name: '特色餐厅E', address: `${destination}市酒店区`, location: '', type: '餐饮', distance: '400' },
+      ],
+      hotels: [
+        { name: `${destination}大酒店`, address: `${destination}市市中心`, location: '', type: '住宿', distance: '300' },
+        { name: `${destination}商务酒店`, address: `${destination}市商业区`, location: '', type: '住宿', distance: '500' },
+        { name: `${destination}度假酒店`, address: `${destination}市景区附近`, location: '', type: '住宿', distance: '2000' },
+        { name: `${destination}快捷酒店`, address: `${destination}市交通枢纽`, location: '', type: '住宿', distance: '800' },
+        { name: `${destination}精品民宿`, address: `${destination}市老城区`, location: '', type: '住宿', distance: '1200' },
+      ],
+    };
+  },
 };
+
+let message = {
+  info: (msg) => console.log('INFO:', msg),
+  warning: (msg) => console.warn('WARNING:', msg),
+  error: (msg) => console.error('ERROR:', msg),
+  success: (msg) => console.log('SUCCESS:', msg),
+};
+
+export function setMessageFunc(msgFunc) {
+  if (msgFunc) message = msgFunc;
+}
 
 export default AIService;
