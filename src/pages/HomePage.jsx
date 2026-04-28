@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Form, Input, DatePicker, Select, InputNumber, Button, Card, Typography, message, Row, Col } from 'antd';
-import { EnvironmentOutlined, CalendarOutlined, TeamOutlined, CarOutlined, RocketOutlined } from '@ant-design/icons';
+import { Form, Input, DatePicker, Select, InputNumber, Button, Card, Typography, message, Row, Col, Checkbox } from 'antd';
+import { EnvironmentOutlined, CalendarOutlined, TeamOutlined, CarOutlined, RocketOutlined, ClockCircleOutlined, CloudOutlined, HeartOutlined, CameraOutlined, CoffeeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -19,6 +19,11 @@ const HomePage = ({ onSubmit }) => {
         departureDate: values.departureDate.format('YYYY-MM-DD'),
         travelMode: values.travelMode,
         peopleCount: values.peopleCount,
+        tripDays: values.tripDays,
+        tripTheme: values.tripTheme,
+        budget: values.budget,
+        specialNeeds: values.specialNeeds || [],
+        interests: values.interests || [],
       };
 
       message.success('规划方案已生成！');
@@ -58,6 +63,11 @@ const HomePage = ({ onSubmit }) => {
                 initialValues={{
                   travelMode: 'driving',
                   peopleCount: 1,
+                  tripDays: 3,
+                  tripTheme: 'nature',
+                  budget: 'medium',
+                  specialNeeds: [],
+                  interests: [],
                 }}
                 size="large"
               >
@@ -138,6 +148,100 @@ const HomePage = ({ onSubmit }) => {
                     </Form.Item>
                   </Col>
                 </Row>
+
+                <Row gutter={24}>
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label="行程天数"
+                      name="tripDays"
+                      rules={[
+                        { required: true, message: '请输入行程天数' },
+                        { type: 'number', min: 1, max: 30, message: '天数范围 1-30' },
+                      ]}
+                    >
+                      <InputNumber
+                        style={styles.fullWidth}
+                        min={1}
+                        max={30}
+                        prefix={<ClockCircleOutlined style={styles.inputIcon} />}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label="旅游主题"
+                      name="tripTheme"
+                      rules={[{ required: true, message: '请选择旅游主题' }]}
+                    >
+                      <Select
+                        style={styles.fullWidth}
+                        placeholder="请选择旅游主题"
+                      >
+                        <Select.Option value="nature">自然风光</Select.Option>
+                        <Select.Option value="culture">历史文化</Select.Option>
+                        <Select.Option value="food">美食之旅</Select.Option>
+                        <Select.Option value="shopping">购物休闲</Select.Option>
+                        <Select.Option value="adventure">探险活动</Select.Option>
+                        <Select.Option value="relax">休闲度假</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Row gutter={24}>
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label="预算范围"
+                      name="budget"
+                      rules={[{ required: true, message: '请选择预算范围' }]}
+                    >
+                      <Select
+                        style={styles.fullWidth}
+                        placeholder="请选择预算范围"
+                      >
+                        <Select.Option value="low">经济型（&lt; 2000元/人）</Select.Option>
+                        <Select.Option value="medium">舒适型（2000-5000元/人）</Select.Option>
+                        <Select.Option value="high">豪华型（&gt; 5000元/人）</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label="特殊需求"
+                      name="specialNeeds"
+                    >
+                      <Select
+                        style={styles.fullWidth}
+                        placeholder="请选择特殊需求（可选）"
+                        mode="multiple"
+                      >
+                        <Select.Option value="kids">带小孩</Select.Option>
+                        <Select.Option value="elderly">带老人</Select.Option>
+                        <Select.Option value="pet">带宠物</Select.Option>
+                        <Select.Option value="disabled">无障碍设施</Select.Option>
+                        <Select.Option value="vegetarian">素食需求</Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item
+                  label="兴趣偏好"
+                  name="interests"
+                >
+                  <Checkbox.Group>
+                    <Row gutter={16}>
+                      <Col span={8}><Checkbox value="photography"><CameraOutlined /> 摄影</Checkbox></Col>
+                      <Col span={8}><Checkbox value="food"><CoffeeOutlined /> 美食</Checkbox></Col>
+                      <Col span={8}><Checkbox value="shopping">购物</Checkbox></Col>
+                      <Col span={8}><Checkbox value="hiking">徒步</Checkbox></Col>
+                      <Col span={8}><Checkbox value="museum">博物馆</Checkbox></Col>
+                      <Col span={8}><Checkbox value="nightlife">夜生活</Checkbox></Col>
+                    </Row>
+                  </Checkbox.Group>
+                </Form.Item>
 
                 <Form.Item
                   label="出行方式"
