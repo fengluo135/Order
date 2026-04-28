@@ -7,9 +7,10 @@
 class LLMService {
   constructor() {
     this.apiKey = 'ark-41e64cce-02a5-432f-ba81-3ab08f7c3932-b64a7';
-    this.baseUrl = 'https://ark.cn-beijing.volces.com/api/v3';
-    this.model = 'doubao-pro';
+    this.baseUrl = 'https://ark.bytedance.net/api/text';
+    this.model = 'doubao';
     this.enabled = true;
+    this.apiVersion = 'v1';
   }
 
   /**
@@ -61,7 +62,7 @@ class LLMService {
    * 调用豆包API
    */
   async callDoubao(prompt) {
-    const url = `${this.baseUrl}/chat/completions`;
+    const url = 'https://api.doubao.com/v1/chat/completions';
     console.log('豆包API调用:', url);
     console.log('API Key:', this.apiKey ? '已配置' : '未配置');
 
@@ -73,7 +74,7 @@ class LLMService {
           'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          model: this.model,
+          model: 'doubao',
           messages: [
             {
               role: 'system',
