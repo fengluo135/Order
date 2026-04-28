@@ -1,18 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Descriptions, Timeline, Button, Spin, Empty, Tag, Divider, Modal, message, Tabs } from 'antd';
-import { ArrowLeftOutlined, EnvironmentOutlined, CalendarOutlined, TeamOutlined, CarOutlined, RocketOutlined, ExclamationCircleOutlined, BulbOutlined, CloudOutlined, ClockCircleOutlined, HeartOutlined, CameraOutlined, CoffeeOutlined, HomeOutlined, GlobalOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Typography, Descriptions, Timeline, Button, Spin, Empty, Tag, Divider, Modal, message, Tabs, List, Alert } from 'antd';
+import { ArrowLeftOutlined, EnvironmentOutlined, CalendarOutlined, TeamOutlined, CarOutlined, RocketOutlined, ExclamationCircleOutlined, BulbOutlined, CloudOutlined, ClockCircleOutlined, HeartOutlined, CameraOutlined, CoffeeOutlined, HomeOutlined, GlobalOutlined, AimOutlined, WarningOutlined } from '@ant-design/icons';
+import AIService from '../services/AIService';
 
 const { Title, Text, Paragraph } = Typography;
 
 const ResultPage = ({ travelData, onBack }) => {
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [itineraryData, setItineraryData] = useState(null);
+  const [error, setError] = useState(null);
+  const [apiStatus, setApiStatus] = useState('loading');
 
-  // 模拟加载
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(timer);
+    loadRealData();
   }, []);
+
+  const loadRealData = async () => {
+    if (!travelData) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setApiStatus('loading');
+
+      const data = await AIService.generateItinerary(travelData);
+      setItineraryData(data);
+      setApiStatus('success');
+      message.success('路线规划已完成！');
+    } catch (error) {
+      console.error('加载数据失败:', error);
+      setError(error.message || '加载数据失败，请重试');
+      setApiStatus('error');
+      message.error('加载失败：' + (error.message || '未知错误'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getTravelModeLabel = (mode) => {
     const modes = {
@@ -32,134 +60,51 @@ const ResultPage = ({ travelData, onBack }) => {
     return icons[mode] || <CarOutlined />;
   };
 
-  const generateMockRoute = () => {
-    // 确保travelData存在
-    if (!travelData) {
-      return {
-        duration: '0小时',
-        distance: '0公里',
-        dailySchedules: [],
-        weather: {
-          forecast: '未知',
-          averageTemp: '未知',
-        },
-        accommodation: '未知',
-        food: '未知',
-        attractions: [],
-      };
+  const formatDistance = (meters) => {
+    if (!meters) return '未知';
+    if (meters >= 1000) {
+      return (meters / 1000).toFixed(1) + '公里';
     }
+    return meters + '米';
+  };
 
-    const { departure, destination, travelMode, departureDate, peopleCount, tripDays, tripTheme, budget, specialNeeds, interests } = travelData;
-
-    const baseTime = {
-      driving: { duration: '6小时30分钟', distance: '580公里' },
-      public: { duration: '4小时30分钟', distance: '高铁580公里' },
-      airplane: { duration: '2小时15分钟', distance: '飞行距离800公里' },
-    };
-
-    const info = baseTime[travelMode] || baseTime.driving;
-
-    const generateDailySchedule = (day) => {
-      const schedules = {
-        nature: [
-          { time: '08:00', title: '早餐', description: '酒店自助早餐' },
-          { time: '09:00', title: '景点游览', description: day === 1 ? '西湖景区' : day === 2 ? '灵隐寺' : '千岛湖' },
-          { time: '12:00', title: '午餐', description: '当地特色餐厅' },
-          { time: '14:00', title: '户外活动', description: day === 1 ? '西湖游船' : day === 2 ? '飞来峰' : '千岛湖游船' },
-          { time: '17:00', title: '自由活动', description: '购物或休息' },
-          { time: '19:00', title: '晚餐', description: '当地美食' },
-        ],
-        culture: [
-          { time: '08:00', title: '早餐', description: '酒店自助早餐' },
-          { time: '09:00', title: '文化景点', description: day === 1 ? '故宫' : day === 2 ? '颐和园' : '八达岭长城' },
-          { time: '12:00', title: '午餐', description: '老字号餐厅' },
-          { time: '14:00', title: '博物馆', description: day === 1 ? '国家博物馆' : day === 2 ? '首都博物馆' : '长城博物馆' },
-          { time: '17:00', title: '自由活动', description: '购物或休息' },
-          { time: '19:00', title: '晚餐', description: '北京烤鸭' },
-        ],
-        food: [
-          { time: '08:00', title: '早餐', description: '当地特色早餐' },
-          { time: '09:00', title: '美食之旅', description: day === 1 ? '小吃街' : day === 2 ? '海鲜市场' : '农家乐' },
-          { time: '12:00', title: '午餐', description: '推荐餐厅' },
-          { time: '14:00', title: '甜点品尝', description: '当地甜品' },
-          { time: '17:00', title: '自由活动', description: '购物或休息' },
-          { time: '19:00', title: '晚餐', description: '特色美食' },
-        ],
-        shopping: [
-          { time: '09:00', title: '早餐', description: '酒店自助早餐' },
-          { time: '10:00', title: '购物', description: day === 1 ? '购物中心' : day === 2 ? '步行街' : '特色市场' },
-          { time: '12:00', title: '午餐', description: '商场餐厅' },
-          { time: '14:00', title: '继续购物', description: '品牌店' },
-          { time: '17:00', title: '自由活动', description: '休息' },
-          { time: '19:00', title: '晚餐', description: '美食街' },
-        ],
-        adventure: [
-          { time: '07:00', title: '早餐', description: '酒店早餐' },
-          { time: '08:00', title: '户外活动', description: day === 1 ? '漂流' : day === 2 ? '徒步' : '攀岩' },
-          { time: '12:00', title: '午餐', description: '户外野餐' },
-          { time: '14:00', title: '继续活动', description: day === 1 ? '皮划艇' : day === 2 ? '登山' : '蹦极' },
-          { time: '17:00', title: '休息', description: '返回酒店' },
-          { time: '19:00', title: '晚餐', description: '烧烤' },
-        ],
-        relax: [
-          { time: '09:00', title: '早餐', description: '酒店自助早餐' },
-          { time: '10:00', title: '休闲活动', description: day === 1 ? '温泉' : day === 2 ? 'SPA' : '高尔夫' },
-          { time: '12:00', title: '午餐', description: '酒店餐厅' },
-          { time: '14:00', title: '自由活动', description: '休息或游泳' },
-          { time: '17:00', title: '夕阳活动', description: '海边散步' },
-          { time: '19:00', title: '晚餐', description: '烛光晚餐' },
-        ],
-      };
-
-      return schedules[tripTheme] || schedules.nature;
-    };
-
-    const dailySchedules = [];
-    const days = tripDays || 3;
-    for (let day = 1; day <= days; day++) {
-      dailySchedules.push({
-        day,
-        date: departureDate ? new Date(departureDate) : new Date(),
-        schedule: generateDailySchedule(day),
-        weather: {
-          temperature: '18-25°C',
-          condition: ['晴', '多云', '小雨'][Math.floor(Math.random() * 3)],
-          wind: '微风',
-        },
-        accommodation: `推荐住宿：${destination || '当地'}${day}号酒店`,
-        food: `推荐美食：${destination || '当地'}特色菜${day}`,
-      });
+  const formatDuration = (seconds) => {
+    if (!seconds) return '未知';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}小时${minutes}分钟`;
     }
-
-    return {
-      ...info,
-      dailySchedules,
-      weather: {
-        forecast: '未来几天天气良好，适合旅游',
-        averageTemp: '18-25°C',
-      },
-      accommodation: '推荐住宿：市中心酒店',
-      food: '推荐美食：当地特色餐厅',
-      attractions: ['景点1', '景点2', '景点3'],
-    };
+    return `${minutes}分钟`;
   };
 
   const showAIStrategy = () => {
     setAiModalVisible(true);
   };
 
-  const handleAIGenerate = () => {
-    message.loading('AI正在为您生成专属攻略...', 2);
-    setTimeout(() => {
-      setAiModalVisible(false);
+  const handleAIGenerate = async () => {
+    setGenerating(true);
+    setAiModalVisible(false);
+    message.loading('AI正在为您生成专属攻略...', 1.5);
+
+    try {
+      const data = await AIService.generateItinerary(travelData);
+      setItineraryData(data);
       message.success('AI攻略已生成！');
-    }, 2000);
+    } catch (error) {
+      message.error('生成失败：' + error.message);
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  if (loading) {
+  if (loading || generating) {
     return (
       <div style={styles.loadingContainer}>
-        <Spin size="large" tip="正在规划您的行程..." />
+        <Spin size="large" tip={generating ? 'AI正在生成专属攻略...' : '正在加载路线信息...'} />
+        {apiStatus === 'loading' && (
+          <Text type="secondary">正在调用高德地图API获取真实数据...</Text>
+        )}
       </div>
     );
   }
@@ -175,7 +120,36 @@ const ResultPage = ({ travelData, onBack }) => {
     );
   }
 
-  const routeInfo = generateMockRoute();
+  if (error) {
+    return (
+      <div style={styles.emptyContainer}>
+        <Alert
+          message="数据加载失败"
+          description={error}
+          type="error"
+          showIcon
+          icon={<WarningOutlined />}
+          action={
+            <Button size="small" type="primary" onClick={loadRealData}>
+              重试
+            </Button>
+          }
+        />
+        <Button type="primary" onClick={onBack} style={{ marginTop: 16 }}>
+          返回首页
+        </Button>
+      </div>
+    );
+  }
+
+  const routeInfo = itineraryData?.route || {
+    distance: '未知',
+    duration: '未知',
+  };
+
+  const dailySchedules = itineraryData?.dailySchedules || [];
+  const recommendations = itineraryData?.recommendations || {};
+  const tips = itineraryData?.tips || [];
 
   return (
     <div style={styles.container}>
@@ -195,66 +169,71 @@ const ResultPage = ({ travelData, onBack }) => {
           <Text type="secondary">
             {travelData.departure} → {travelData.destination} | {travelData.tripDays}天行程
           </Text>
+          {apiStatus === 'success' && (
+            <Tag color="success" style={{ marginLeft: 8 }}>高德API数据</Tag>
+          )}
         </div>
       </div>
 
       <div style={styles.content}>
         <Row gutter={[24, 24]}>
           <Col xs={24} lg={16}>
-            <Card style={styles.card} bordered={false}>
-              <div style={styles.cardHeader}>
-                <Title level={4} style={styles.cardTitle}>
-                  <CalendarOutlined /> 每日行程安排
-                </Title>
-                <Tag color="blue">{getTravelModeLabel(travelData.travelMode)}</Tag>
-              </div>
-              <Tabs defaultActiveKey="1" type="card">
-                {routeInfo.dailySchedules.map((daySchedule, index) => (
-                  <Tabs.TabPane
-                    tab={`第${daySchedule.day}天`}
-                    key={daySchedule.day}
-                  >
-                    <div style={styles.dayInfo}>
-                      <Row gutter={16}>
-                        <Col span={8}>
-                          <Tag color="green" icon={<CloudOutlined />}>
-                            {daySchedule.weather.condition}
-                          </Tag>
-                          <Text type="secondary" style={{ marginLeft: 8 }}>
-                            {daySchedule.weather.temperature}
-                          </Text>
-                        </Col>
-                        <Col span={8}>
-                          <Tag color="orange" icon={<HomeOutlined />}>
-                            {daySchedule.accommodation}
-                          </Tag>
-                        </Col>
-                        <Col span={8}>
-                          <Tag color="red" icon={<CoffeeOutlined />}>
-                            {daySchedule.food}
-                          </Tag>
-                        </Col>
-                      </Row>
-                      <Divider />
-                    </div>
-                    <Timeline
-                      items={daySchedule.schedule.map((item, itemIndex) => ({
-                        color: itemIndex === 0 || itemIndex === daySchedule.schedule.length - 1 ? 'blue' : 'gray',
-                        children: (
-                          <div style={styles.timelineItem}>
-                            <Text strong style={styles.timelineTime}>{item.time}</Text>
-                            <Text strong style={styles.timelineTitle}>{item.title}</Text>
-                            <Paragraph type="secondary" style={styles.timelineDesc}>
-                              {item.description}
-                            </Paragraph>
-                          </div>
-                        ),
-                      }))}
-                    />
-                  </Tabs.TabPane>
-                ))}
-              </Tabs>
-            </Card>
+            {dailySchedules.length > 0 && (
+              <Card style={styles.card} bordered={false}>
+                <div style={styles.cardHeader}>
+                  <Title level={4} style={styles.cardTitle}>
+                    <CalendarOutlined /> 每日行程安排
+                  </Title>
+                  <Tag color="blue">{getTravelModeLabel(travelData.travelMode)}</Tag>
+                </div>
+                <Tabs defaultActiveKey="1" type="card">
+                  {dailySchedules.map((daySchedule) => (
+                    <Tabs.TabPane
+                      tab={`第${daySchedule.day}天`}
+                      key={daySchedule.day}
+                    >
+                      <div style={styles.dayInfo}>
+                        <Row gutter={16}>
+                          <Col span={8}>
+                            <Tag color="green" icon={<CloudOutlined />}>
+                              {daySchedule.weather?.condition || '未知'}
+                            </Tag>
+                            <Text type="secondary" style={{ marginLeft: 8 }}>
+                              {daySchedule.weather?.temperature || '未知'}
+                            </Text>
+                          </Col>
+                          <Col span={8}>
+                            <Tag color="orange" icon={<HomeOutlined />}>
+                              住宿推荐
+                            </Tag>
+                          </Col>
+                          <Col span={8}>
+                            <Tag color="red" icon={<CoffeeOutlined />}>
+                              美食推荐
+                            </Tag>
+                          </Col>
+                        </Row>
+                        <Divider />
+                      </div>
+                      <Timeline
+                        items={daySchedule.schedule.map((item, itemIndex) => ({
+                          color: itemIndex === 0 || itemIndex === daySchedule.schedule.length - 1 ? 'blue' : 'gray',
+                          children: (
+                            <div style={styles.timelineItem}>
+                              <Text strong style={styles.timelineTime}>{item.time}</Text>
+                              <Text strong style={styles.timelineTitle}>{item.title}</Text>
+                              <Paragraph type="secondary" style={styles.timelineDesc}>
+                                {item.description}
+                              </Paragraph>
+                            </div>
+                          ),
+                        }))}
+                      />
+                    </Tabs.TabPane>
+                  ))}
+                </Tabs>
+              </Card>
+            )}
 
             <Card style={styles.card} bordered={false}>
               <div style={styles.cardHeader}>
@@ -263,13 +242,25 @@ const ResultPage = ({ travelData, onBack }) => {
                 </Title>
               </div>
               <Descriptions column={2} bordered size="small">
-                <Descriptions.Item label="出发地">{travelData.departure}</Descriptions.Item>
-                <Descriptions.Item label="目的地">{travelData.destination}</Descriptions.Item>
+                <Descriptions.Item label="出发地">
+                  {itineraryData?.departure?.name || travelData.departure}
+                  {itineraryData?.departure?.location && (
+                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                      ({itineraryData.departure.location.lng.toFixed(2)}, {itineraryData.departure.location.lat.toFixed(2)})
+                    </Text>
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="目的地">
+                  {itineraryData?.destination?.name || travelData.destination}
+                  {itineraryData?.destination?.city && (
+                    <Text type="secondary" style={{ marginLeft: 8 }}>{itineraryData.destination.city}</Text>
+                  )}
+                </Descriptions.Item>
                 <Descriptions.Item label="出行方式">
                   {getTravelModeIcon(travelData.travelMode)} {getTravelModeLabel(travelData.travelMode)}
                 </Descriptions.Item>
-                <Descriptions.Item label="行程距离">{routeInfo.distance}</Descriptions.Item>
-                <Descriptions.Item label="预计耗时">{routeInfo.duration}</Descriptions.Item>
+                <Descriptions.Item label="行程距离">{formatDistance(parseInt(routeInfo.distance))}</Descriptions.Item>
+                <Descriptions.Item label="预计耗时">{formatDuration(parseInt(routeInfo.duration))}</Descriptions.Item>
                 <Descriptions.Item label="出发日期">{travelData.departureDate}</Descriptions.Item>
                 <Descriptions.Item label="出行人数">{travelData.peopleCount} 人</Descriptions.Item>
                 <Descriptions.Item label="行程天数">{travelData.tripDays} 天</Descriptions.Item>
@@ -293,6 +284,55 @@ const ResultPage = ({ travelData, onBack }) => {
               </Descriptions>
             </Card>
 
+            {recommendations.attractions?.length > 0 && (
+              <Card style={styles.card} bordered={false}>
+                <div style={styles.cardHeader}>
+                  <Title level={4} style={styles.cardTitle}>
+                    <CameraOutlined /> 推荐景点
+                  </Title>
+                </div>
+                <List
+                  size="small"
+                  dataSource={recommendations.attractions.slice(0, 5)}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={<AimOutlined style={{ color: '#1890ff' }} />}
+                        title={item.name}
+                        description={item.address || item.type}
+                      />
+                      {item.distance && (
+                        <Tag>{parseInt(item.distance)}米</Tag>
+                      )}
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            )}
+
+            {recommendations.restaurants?.length > 0 && (
+              <Card style={styles.card} bordered={false}>
+                <div style={styles.cardHeader}>
+                  <Title level={4} style={styles.cardTitle}>
+                    <CoffeeOutlined /> 推荐美食
+                  </Title>
+                </div>
+                <List
+                  size="small"
+                  dataSource={recommendations.restaurants.slice(0, 5)}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={<CoffeeOutlined style={{ color: '#ff6b6b' }} />}
+                        title={item.name}
+                        description={item.address || item.type}
+                      />
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            )}
+
             <Card style={styles.card} bordered={false}>
               <div style={styles.cardHeader}>
                 <Title level={4} style={styles.cardTitle}>
@@ -308,7 +348,7 @@ const ResultPage = ({ travelData, onBack }) => {
                 onClick={showAIStrategy}
                 style={styles.aiButton}
               >
-                AI生成专属攻略
+                重新生成攻略
               </Button>
             </Card>
           </Col>
@@ -321,17 +361,24 @@ const ResultPage = ({ travelData, onBack }) => {
                 </Title>
               </div>
               <div style={styles.weatherCard}>
-                <div style={styles.weatherIcon}>
-                  <CloudOutlined style={{ fontSize: 48, color: '#1890ff' }} />
-                </div>
-                <Text strong style={styles.weatherTemp}>{routeInfo.weather.averageTemp}</Text>
-                <Paragraph style={styles.weatherDesc}>
-                  {routeInfo.weather.forecast}
-                </Paragraph>
-                <Divider />
-                <Text type="secondary">
-                  💡 扩展接口已预留：WeatherService.getForecast(destination, dates)
-                </Text>
+                {itineraryData?.weather ? (
+                  <>
+                    <div style={styles.weatherIcon}>
+                      <CloudOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+                    </div>
+                    <Text strong style={styles.weatherTemp}>{itineraryData.weather.temperature}°C</Text>
+                    <Paragraph style={styles.weatherDesc}>
+                      {itineraryData.weather.weather}
+                    </Paragraph>
+                    <Descriptions column={1} size="small">
+                      <Descriptions.Item label="风力">{itineraryData.weather.wind}</Descriptions.Item>
+                      <Descriptions.Item label="湿度">{itineraryData.weather.humidity}%</Descriptions.Item>
+                      <Descriptions.Item label="更新时间">{itineraryData.weather.reportTime}</Descriptions.Item>
+                    </Descriptions>
+                  </>
+                ) : (
+                  <Text type="secondary">正在获取天气信息...</Text>
+                )}
               </div>
             </Card>
 
@@ -348,13 +395,12 @@ const ResultPage = ({ travelData, onBack }) => {
                   {travelData.departure} → {travelData.destination}
                 </Text>
                 <Text type="secondary" style={styles.mapNote}>
-                  地图预览区域（需配置高德地图API）
+                  路线距离：{formatDistance(parseInt(routeInfo.distance))}
+                </Text>
+                <Text type="secondary" style={styles.mapNote}>
+                  预计时间：{formatDuration(parseInt(routeInfo.duration))}
                 </Text>
               </div>
-              <Divider />
-              <Text type="secondary" style={styles.extensionNote}>
-                💡 扩展接口已预留：AMapService.renderMap(departure, destination)
-              </Text>
             </Card>
 
             <Card style={styles.card} bordered={false}>
@@ -374,11 +420,25 @@ const ResultPage = ({ travelData, onBack }) => {
                 <Descriptions.Item label="兴趣偏好">
                   {travelData.interests?.length ? travelData.interests.join('、') : '无'}
                 </Descriptions.Item>
-                <Descriptions.Item label="推荐景点">
-                  {routeInfo.attractions.join('、')}
-                </Descriptions.Item>
               </Descriptions>
             </Card>
+
+            {tips.length > 0 && (
+              <Card style={styles.card} bordered={false}>
+                <div style={styles.cardHeader}>
+                  <Title level={4} style={styles.cardTitle}>
+                    <WarningOutlined /> 出行提示
+                  </Title>
+                </div>
+                <ul style={styles.tipsList}>
+                  {tips.map((tip, index) => (
+                    <li key={index} style={styles.tipsItem}>
+                      <Text type="secondary">{tip}</Text>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
           </Col>
         </Row>
       </div>
@@ -395,7 +455,7 @@ const ResultPage = ({ travelData, onBack }) => {
           <Button key="cancel" onClick={() => setAiModalVisible(false)}>
             取消
           </Button>,
-          <Button key="generate" type="primary" onClick={handleAIGenerate}>
+          <Button key="generate" type="primary" onClick={handleAIGenerate} loading={generating}>
             开始生成
           </Button>,
         ]}
@@ -409,10 +469,11 @@ const ResultPage = ({ travelData, onBack }) => {
             <Descriptions.Item label="目的地">{travelData.destination}</Descriptions.Item>
             <Descriptions.Item label="出行方式">{getTravelModeLabel(travelData.travelMode)}</Descriptions.Item>
             <Descriptions.Item label="出行人数">{travelData.peopleCount}人</Descriptions.Item>
+            <Descriptions.Item label="行程天数">{travelData.tripDays}天</Descriptions.Item>
           </Descriptions>
           <Divider />
           <Text type="secondary">
-            💡 扩展接口已预留：AIService.generateItinerary(travelData)
+            💡 将调用高德地图API获取真实路线、景点和天气数据
           </Text>
         </div>
       </Modal>
@@ -549,6 +610,15 @@ const styles = {
     fontSize: '24px',
     color: '#1890ff',
     marginBottom: '16px',
+  },
+  tipsList: {
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+  tipsItem: {
+    padding: '8px 0',
+    borderBottom: '1px solid #f0f0f0',
   },
 };
 
