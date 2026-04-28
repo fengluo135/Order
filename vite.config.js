@@ -10,6 +10,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/amap-api/, ''),
       },
+      '/doubao-api': {
+        target: 'https://api.doubao.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/doubao-api/, ''),
+        secure: false,
+      },
     },
   },
 })

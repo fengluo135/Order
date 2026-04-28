@@ -62,7 +62,7 @@ class LLMService {
    * 调用豆包API
    */
   async callDoubao(prompt) {
-    const url = 'https://api.doubao.com/v1/chat/completions';
+    const url = '/doubao-api/v1/chat/completions';
     console.log('豆包API调用:', url);
     console.log('API Key:', this.apiKey ? '已配置' : '未配置');
 
